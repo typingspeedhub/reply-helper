@@ -1,4 +1,4 @@
-API_URL<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -45,6 +45,22 @@ API_URL<!doctype html>
 
       <div class="row">
         <div>
+          <label for="useCase">Use case</label>
+          <select id="useCase">
+            <option value="customer_support" selected>Customer Support (free)</option>
+            <option value="awkward">Awkward / Difficult Message</option>
+            <option value="dating">Personal / Dating</option>
+          </select>
+
+          <label for="goal">Reply goal</label>
+          <select id="goal">
+            <option value="calm_professional" selected>Calm & Professional</option>
+            <option value="boundaries">Set boundaries</option>
+            <option value="clarify">Ask for clarification</option>
+            <option value="close">Close the conversation</option>
+            <option value="short">Short reply</option>
+          </select>
+
           <label for="tone">Tone</label>
           <select id="tone">
             <option value="polite">Polite</option>
@@ -53,6 +69,7 @@ API_URL<!doctype html>
             <option value="friendly">Friendly</option>
             <option value="short">Short & Direct</option>
           </select>
+
           <div class="hint">Tip: for customer complaints, use “Professional” or “Polite”.</div>
         </div>
       </div>
@@ -73,13 +90,15 @@ API_URL<!doctype html>
   </div>
 
   <script>
-    // IMPORTANT: replace this with your own backend/proxy endpoint
-   const API_URL = "https://sparkling-wildflower-5f7e.typingspeedhub.workers.dev/generate";
+    const API_URL = "https://sparkling-wildflower-5f7e.typingspeedhub.workers.dev/generate";
 
     const $ = (id) => document.getElementById(id);
 
     const msgEl = $("msg");
     const toneEl = $("tone");
+    const useCaseEl = $("useCase");
+    const goalEl = $("goal");
+
     const goBtn = $("go");
     const clearBtn = $("clear");
     const loadingEl = $("loading");
@@ -149,15 +168,12 @@ API_URL<!doctype html>
     goBtn.addEventListener("click", async () => {
       const message = msgEl.value.trim();
       const tone = toneEl.value;
+      const useCase = useCaseEl.value;
+      const goal = goalEl.value;
 
       if (!message) {
         setStatus("Please paste a message first.", "err");
         msgEl.focus();
-        return;
-      }
-
-      if (API_URL.includes("YOUR_BACKEND_URL_HERE")) {
-        setStatus("Please set your backend API_URL in the code.", "err");
         return;
       }
 
@@ -170,7 +186,7 @@ API_URL<!doctype html>
         const res = await fetch(API_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message, tone }),
+          body: JSON.stringify({ message, tone, useCase, goal }),
         });
 
         const data = await res.json().catch(() => ({}));
