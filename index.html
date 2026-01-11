@@ -16,7 +16,7 @@
     textarea { width: 100%; min-height: 160px; resize: vertical; padding: 12px; border-radius: 10px; border: 1px solid #d8dde6; font-size: 14px; }
     select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #d8dde6; background: white; font-size: 14px; }
     .row { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
-    .actions { display:flex; gap: 10px; align-items:center; margin-top: 14px; }
+    .actions { display:flex; gap: 10px; align-items:center; margin-top: 14px; flex-wrap: wrap; }
     button { padding: 10px 14px; border-radius: 10px; border: 0; cursor: pointer; font-weight: 700; }
     button.primary { background: #111827; color: white; }
     button.secondary { background: #eef2ff; color: #1f2a5a; }
@@ -31,6 +31,40 @@
     .answer pre { margin: 0; white-space: pre-wrap; word-wrap: break-word; font-family: inherit; font-size: 14px; line-height: 1.35; }
     .copy { margin-top: 10px; }
     .footer { margin-top: 18px; color:#666; font-size: 12px; }
+
+    /* Modal */
+    .modalOverlay {
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.35);
+      align-items:center;
+      justify-content:center;
+      padding:16px;
+      z-index: 9999;
+    }
+    .modalCard {
+      background:#fff;
+      max-width:520px;
+      width:100%;
+      border-radius:14px;
+      padding:16px;
+      box-shadow:0 12px 30px rgba(0,0,0,.2);
+    }
+    .modalCard h2 { margin:0 0 8px; font-size:18px; }
+    .modalCard p { margin:0 0 12px; color:#444; line-height:1.4; }
+    .modalActions { display:flex; gap:10px; justify-content:flex-end; flex-wrap: wrap; }
+    .pill {
+      display:inline-block;
+      font-size:12px;
+      padding:4px 8px;
+      border-radius:999px;
+      background:#f1f5f9;
+      color:#0f172a;
+      margin-left: 8px;
+      border: 1px solid #e2e8f0;
+      vertical-align: middle;
+    }
   </style>
 </head>
 
@@ -48,17 +82,17 @@
           <label for="useCase">Use case</label>
           <select id="useCase">
             <option value="customer_support" selected>Customer Support (free)</option>
-            <option value="awkward">Awkward / Difficult Message</option>
-            <option value="dating">Personal / Dating</option>
+            <option value="awkward">🔒 Awkward / Difficult Message</option>
+            <option value="dating">🔒 Personal / Dating</option>
           </select>
 
           <label for="goal">Reply goal</label>
           <select id="goal">
             <option value="calm_professional" selected>Calm & Professional</option>
-            <option value="boundaries">Set boundaries</option>
             <option value="clarify">Ask for clarification</option>
-            <option value="close">Close the conversation</option>
-            <option value="short">Short reply</option>
+            <option value="boundaries">🔒 Set boundaries</option>
+            <option value="close">🔒 Close the conversation</option>
+            <option value="short">🔒 Short reply</option>
           </select>
 
           <label for="tone">Tone</label>
@@ -78,6 +112,7 @@
         <button class="primary" id="go">Generate replies</button>
         <button class="secondary" id="clear">Clear</button>
         <span id="loading" class="hint" style="display:none;">Generating…</span>
+        <span id="quota" class="pill"></span>
       </div>
 
       <div id="status" class="status"></div>
@@ -89,9 +124,37 @@
     </div>
   </div>
 
+  <!-- Upgrade modal -->
+  <div id="upgradeModal" class="modalOverlay">
+    <div class="modalCard">
+      <h2>Upgrade</h2>
+      <p id="upgradeText"></p>
+      <div class="modalActions">
+        <button class="secondary" id="upgradeClose">Not now</button>
+        <a id="upgradeLink" href="#" target="_blank" style="text-decoration:none;">
+          <button class="primary" type="button">Upgrade now</button>
+        </a>
+      </div>
+      <div class="hint" style="margin-top:10px;">
+        Later we can connect Stripe/Gumroad and unlock automatically.
+      </div>
+    </div>
+  </div>
+
   <script>
+    // ===== CONFIG =====
     const API_URL = "https://sparkling-wildflower-5f7e.typingspeedhub.workers.dev/generate";
 
+    const FREE_DAILY_LIMIT = 5;
+
+    // Paywall rules
+    const LOCKED_USE_CASES = new Set(["awkward", "dating"]);
+    const FREE_GOALS = new Set(["calm_professional", "clarify"]); // free goals only
+
+    // TODO: Replace with real payment page (Gumroad/Stripe)
+    const UPGRADE_URL = "https://example.com/upgrade";
+
+    // ===== DOM =====
     const $ = (id) => document.getElementById(id);
 
     const msgEl = $("msg");
@@ -104,110 +167,12 @@
     const loadingEl = $("loading");
     const statusEl = $("status");
     const answersEl = $("answers");
+    const quotaEl = $("quota");
 
-    function setStatus(text, kind = "") {
-      statusEl.textContent = text || "";
-      statusEl.className = "status " + (kind || "");
-    }
+    const upgradeModal = $("upgradeModal");
+    const upgradeText = $("upgradeText");
+    const upgradeClose = $("upgradeClose");
+    const upgradeLink = $("upgradeLink");
 
-    function setLoading(isLoading) {
-      loadingEl.style.display = isLoading ? "inline" : "none";
-      goBtn.disabled = isLoading;
-      clearBtn.disabled = isLoading;
-    }
-
-    function renderAnswers(list) {
-      answersEl.innerHTML = "";
-      list.forEach((text, idx) => {
-        const div = document.createElement("div");
-        div.className = "answer";
-        div.innerHTML = `
-          <h3>Reply #${idx + 1}</h3>
-          <pre>${escapeHtml(text)}</pre>
-          <div class="copy">
-            <button class="secondary" data-copy="${idx}">Copy</button>
-          </div>
-        `;
-        answersEl.appendChild(div);
-      });
-
-      answersEl.querySelectorAll("button[data-copy]").forEach(btn => {
-        btn.addEventListener("click", async () => {
-          const i = Number(btn.getAttribute("data-copy"));
-          const text = list[i] || "";
-          try {
-            await navigator.clipboard.writeText(text);
-            setStatus("Copied to clipboard ✅", "ok");
-            setTimeout(() => setStatus(""), 1500);
-          } catch {
-            setStatus("Copy failed. Please select text and copy manually.", "err");
-          }
-        });
-      });
-
-      answersEl.style.display = "grid";
-    }
-
-    function escapeHtml(str) {
-      return String(str)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-    }
-
-    clearBtn.addEventListener("click", () => {
-      msgEl.value = "";
-      setStatus("");
-      answersEl.style.display = "none";
-      answersEl.innerHTML = "";
-      msgEl.focus();
-    });
-
-    goBtn.addEventListener("click", async () => {
-      const message = msgEl.value.trim();
-      const tone = toneEl.value;
-      const useCase = useCaseEl.value;
-      const goal = goalEl.value;
-
-      if (!message) {
-        setStatus("Please paste a message first.", "err");
-        msgEl.focus();
-        return;
-      }
-
-      setStatus("");
-      setLoading(true);
-      answersEl.style.display = "none";
-      answersEl.innerHTML = "";
-
-      try {
-        const res = await fetch(API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message, tone, useCase, goal }),
-        });
-
-        const data = await res.json().catch(() => ({}));
-
-        if (!res.ok) {
-          throw new Error(data?.error || `Request failed (HTTP ${res.status})`);
-        }
-
-        if (!Array.isArray(data?.replies) || data.replies.length === 0) {
-          throw new Error("No replies returned from server.");
-        }
-
-        renderAnswers(data.replies.slice(0, 3));
-        setStatus("Done ✅", "ok");
-      } catch (err) {
-        console.error(err);
-        setStatus(err.message || "Unexpected error.", "err");
-      } finally {
-        setLoading(false);
-      }
-    });
-  </script>
-</body>
-</html>
+    // ===== UI helpers =====
+    function setStatus(text, kind
