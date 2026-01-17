@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Reply Helper</title>
-  <meta name="description" content="Paste a message, choose a tone, and get 3 ready-to-send replies." />
+  <meta name="description" content="Generate professional replies instantly. Free daily limit, upgrade for more." />
   <style>
     :root { color-scheme: light; }
     body { font-family: Arial, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #f6f7f9; }
@@ -28,9 +28,14 @@
     .answers { margin-top: 18px; display: grid; gap: 12px; }
     .answer { border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; background: #fff; }
     .answer h3 { margin: 0 0 8px; font-size: 14px; }
-    .answer pre { margin: 0; white-space: pre-wrap; word-wrap: break-word; font-family: inherit; font-size: 14px; line-height: 1.35; }
-    .copy { margin-top: 10px; }
-    .footer { margin-top: 18px; color:#666; font-size: 12px; }
+    .answer pre { margin: 0; white-space: pre-wrap; }
+    .pill {
+      font-size:12px;
+      padding:4px 8px;
+      border-radius:999px;
+      background:#f1f5f9;
+      border:1px solid #e2e8f0;
+    }
 
     /* Modal */
     .modalOverlay {
@@ -40,8 +45,7 @@
       background:rgba(0,0,0,.35);
       align-items:center;
       justify-content:center;
-      padding:16px;
-      z-index: 9999;
+      z-index:9999;
     }
     .modalCard {
       background:#fff;
@@ -49,130 +53,117 @@
       width:100%;
       border-radius:14px;
       padding:16px;
-      box-shadow:0 12px 30px rgba(0,0,0,.2);
-    }
-    .modalCard h2 { margin:0 0 8px; font-size:18px; }
-    .modalCard p { margin:0 0 12px; color:#444; line-height:1.4; }
-    .modalActions { display:flex; gap:10px; justify-content:flex-end; flex-wrap: wrap; }
-    .pill {
-      display:inline-block;
-      font-size:12px;
-      padding:4px 8px;
-      border-radius:999px;
-      background:#f1f5f9;
-      color:#0f172a;
-      margin-left: 8px;
-      border: 1px solid #e2e8f0;
-      vertical-align: middle;
     }
   </style>
 </head>
 
 <body>
-  <div class="wrap">
-    <div class="card">
-      <h1>Reply Helper</h1>
-      <p>Paste a message, choose a tone, and get <b>3</b> ready-to-send reply suggestions.</p>
+<div class="wrap">
+  <div class="card">
+    <h1>Reply Helper</h1>
+    <p>Generate professional replies instantly. Free daily limit available.</p>
 
-      <label for="msg">Incoming message</label>
-      <textarea id="msg" placeholder="Paste the message here..."></textarea>
+    <label>Incoming message</label>
+    <textarea id="msg"></textarea>
 
-      <div class="row">
-        <div>
-          <label for="useCase">Use case</label>
-          <select id="useCase">
-            <option value="customer_support" selected>Customer Support (free)</option>
-            <option value="awkward">🔒 Awkward / Difficult Message</option>
-            <option value="dating">🔒 Personal / Dating</option>
-          </select>
+    <label>Use case</label>
+    <select id="useCase">
+      <option value="customer_support">Customer Support (free)</option>
+      <option value="awkward">🔒 Awkward / Difficult</option>
+      <option value="dating">🔒 Dating</option>
+    </select>
 
-          <label for="goal">Reply goal</label>
-          <select id="goal">
-            <option value="calm_professional" selected>Calm & Professional</option>
-            <option value="clarify">Ask for clarification</option>
-            <option value="boundaries">🔒 Set boundaries</option>
-            <option value="close">🔒 Close the conversation</option>
-            <option value="short">🔒 Short reply</option>
-          </select>
+    <label>Reply goal</label>
+    <select id="goal">
+      <option value="calm_professional">Calm & Professional</option>
+      <option value="clarify">Ask for clarification</option>
+      <option value="boundaries">🔒 Set boundaries</option>
+      <option value="close">🔒 Close conversation</option>
+      <option value="short">🔒 Short reply</option>
+    </select>
 
-          <label for="tone">Tone</label>
-          <select id="tone">
-            <option value="polite">Polite</option>
-            <option value="professional" selected>Professional / Business</option>
-            <option value="firm">Firm</option>
-            <option value="friendly">Friendly</option>
-            <option value="short">Short & Direct</option>
-          </select>
-
-          <div class="hint">Tip: for customer complaints, use “Professional” or “Polite”.</div>
-        </div>
-      </div>
-
-      <div class="actions">
-        <button class="primary" id="go">Generate replies</button>
-        <button class="secondary" id="clear">Clear</button>
-        <span id="loading" class="hint" style="display:none;">Generating…</span>
-        <span id="quota" class="pill"></span>
-      </div>
-
-      <div id="status" class="status"></div>
-      <div id="answers" class="answers" style="display:none;"></div>
-
-      <div class="footer">
-        Note: this page calls a secure backend proxy (no API keys in the browser).
-      </div>
+    <div class="actions">
+      <button class="primary" id="go">Generate</button>
+      <span id="quota" class="pill"></span>
     </div>
+
+    <div id="status" class="status"></div>
+    <div id="answers" class="answers"></div>
   </div>
+</div>
 
-  <!-- Upgrade modal -->
-  <div id="upgradeModal" class="modalOverlay">
-    <div class="modalCard">
-      <h2>Upgrade</h2>
-      <p id="upgradeText"></p>
-      <div class="modalActions">
-        <button class="secondary" id="upgradeClose">Not now</button>
-        <a id="upgradeLink" href="#" target="_blank" style="text-decoration:none;">
-          <button class="primary" type="button">Upgrade now</button>
-        </a>
-      </div>
-      <div class="hint" style="margin-top:10px;">
-        Later we can connect Stripe/Gumroad and unlock automatically.
-      </div>
-    </div>
+<div id="upgradeModal" class="modalOverlay">
+  <div class="modalCard">
+    <h2>Upgrade</h2>
+    <p id="upgradeText"></p>
+    <button class="secondary" onclick="closeUpgrade()">Not now</button>
+    <button class="primary">Upgrade (coming soon)</button>
   </div>
+</div>
 
-  <script>
-    // ===== CONFIG =====
-    const API_URL = "https://sparkling-wildflower-5f7e.typingspeedhub.workers.dev/generate";
+<script>
+const API_URL = "https://sparkling-wildflower-5f7e.typingspeedhub.workers.dev/generate";
+const LIMIT = 5;
+const LOCKED_CASES = ["awkward","dating"];
+const LOCKED_GOALS = ["boundaries","close","short"];
 
-    const FREE_DAILY_LIMIT = 5;
+const today = new Date().toISOString().slice(0,10);
+const key = "usage_"+today;
 
-    // Paywall rules
-    const LOCKED_USE_CASES = new Set(["awkward", "dating"]);
-    const FREE_GOALS = new Set(["calm_professional", "clarify"]); // free goals only
+let used = Number(localStorage.getItem(key)||0);
+updateQuota();
 
-    // TODO: Replace with real payment page (Gumroad/Stripe)
-    const UPGRADE_URL = "https://example.com/upgrade";
+function updateQuota(){
+  document.getElementById("quota").textContent =
+    `Free today: ${Math.max(0, LIMIT-used)} / ${LIMIT}`;
+}
 
-    // ===== DOM =====
-    const $ = (id) => document.getElementById(id);
+function showUpgrade(msg){
+  document.getElementById("upgradeText").textContent = msg;
+  document.getElementById("upgradeModal").style.display="flex";
+}
 
-    const msgEl = $("msg");
-    const toneEl = $("tone");
-    const useCaseEl = $("useCase");
-    const goalEl = $("goal");
+function closeUpgrade(){
+  document.getElementById("upgradeModal").style.display="none";
+}
 
-    const goBtn = $("go");
-    const clearBtn = $("clear");
-    const loadingEl = $("loading");
-    const statusEl = $("status");
-    const answersEl = $("answers");
-    const quotaEl = $("quota");
+document.getElementById("go").onclick = async ()=>{
+  const msg = msgEl.value.trim();
+  const useCase = useCaseEl.value;
+  const goal = goalEl.value;
 
-    const upgradeModal = $("upgradeModal");
-    const upgradeText = $("upgradeText");
-    const upgradeClose = $("upgradeClose");
-    const upgradeLink = $("upgradeLink");
+  if(!msg) return;
 
-    // ===== UI helpers =====
-    function setStatus(text, kind
+  if(LOCKED_CASES.includes(useCase)){
+    showUpgrade("This use case requires upgrade.");
+    return;
+  }
+
+  if(LOCKED_GOALS.includes(goal)){
+    showUpgrade("This reply goal requires upgrade.");
+    return;
+  }
+
+  if(used>=LIMIT && useCase!=="customer_support"){
+    showUpgrade("Daily free limit reached.");
+    return;
+  }
+
+  used++;
+  localStorage.setItem(key, used);
+  updateQuota();
+
+  const res = await fetch(API_URL,{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({message:msg, goal})
+  });
+  const data = await res.json();
+
+  document.getElementById("answers").innerHTML =
+    data.replies.map(r=>`<div class="answer"><pre>${r}</pre></div>`).join("");
+};
+</script>
+</body>
+</html>
+
