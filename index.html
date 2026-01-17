@@ -19,6 +19,7 @@
     button { padding: 10px 14px; border-radius: 10px; border: 0; cursor: pointer; font-weight: 700; }
     button.primary { background: #111827; color: white; }
     button.secondary { background: #eef2ff; color: #1f2a5a; }
+    button.ghost { background: #f8fafc; color: #111827; border: 1px solid #e5e7eb; }
     button:disabled { opacity: .6; cursor: not-allowed; }
     .hint { font-size: 12px; color:#666; margin-top: 8px; }
     .status { margin-top: 12px; font-size: 13px; }
@@ -34,6 +35,13 @@
       border-radius:999px;
       background:#f1f5f9;
       border:1px solid #e2e8f0;
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+    }
+    .pill.pro {
+      background:#ecfeff;
+      border-color:#a5f3fc;
     }
 
     /* Modal */
@@ -49,7 +57,7 @@
     }
     .modalCard {
       background:#fff;
-      max-width:520px;
+      max-width:560px;
       width:100%;
       border-radius:14px;
       padding:16px;
@@ -59,10 +67,61 @@
     .modalCard p { margin: 0 0 12px; }
     .modalActions { display:flex; gap:10px; justify-content:flex-end; flex-wrap: wrap; }
 
+    .modalSection {
+      border:1px solid #e5e7eb;
+      background:#fff;
+      border-radius:12px;
+      padding:12px;
+      margin-top:12px;
+    }
+    .modalSection h3 {
+      margin:0 0 6px;
+      font-size:14px;
+    }
+    .modalSection .muted {
+      margin:0 0 10px;
+      color:#555;
+      font-size:13px;
+    }
+    .modalSection input {
+      width:100%;
+      padding:10px 12px;
+      border-radius:10px;
+      border:1px solid #d8dde6;
+      font-size:14px;
+    }
+    .modalSection .row {
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:10px;
+      margin-top:10px;
+    }
+    .inlineStatus {
+      margin-top:10px;
+      font-size:13px;
+    }
+    .inlineStatus.err { color:#b42318; }
+    .inlineStatus.ok { color:#067647; }
+
     #loading {
       display:none;
       font-size: 12px;
       color: #444;
+    }
+
+    a.linkBtn {
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      padding:10px 14px;
+      border-radius:10px;
+      text-decoration:none;
+      font-weight:700;
+      background:#111827;
+      color:#fff;
+      border:0;
+      cursor:pointer;
     }
   </style>
 </head>
@@ -103,11 +162,12 @@
       <button class="primary" id="go">Generate</button>
       <span id="loading">Generating…</span>
       <span id="quota" class="pill"></span>
+      <span id="proBadge" class="pill pro" style="display:none;">PRO</span>
     </div>
 
     <div id="status" class="status"></div>
     <div id="answers" class="answers"></div>
-    <div class="hint">Free plan: 5 replies/day. Locked options require upgrade.</div>
+    <div class="hint">Free plan: 5 replies / 24 hours. Locked options require upgrade.</div>
   </div>
 </div>
 
@@ -115,7 +175,30 @@
   <div class="modalCard">
     <h2 id="upgradeTitle">Upgrade</h2>
     <p id="upgradeText"></p>
-    <div class="modalActions">
+
+    <!-- Subscribe section -->
+    <div class="modalSection">
+      <h3>Subscribe (coming soon)</h3>
+      <p class="muted">Pro will unlock higher limits and premium modes.</p>
+      <a id="subscribeLink" class="linkBtn" href="#" target="_blank" rel="noopener">Subscribe on Gumroad (Coming soon)</a>
+      <p class="muted" style="margin-top:10px;">Once your Gumroad product is live, we’ll replace this link.</p>
+    </div>
+
+    <!-- Activate section -->
+    <div class="modalSection">
+      <h3>Already subscribed? Activate</h3>
+      <p class="muted">Enter your email + activation code. (For now use: <b>PRO-TEST-2026</b>)</p>
+
+      <div class="row">
+        <input id="proEmail" type="email" placeholder="you@example.com" autocomplete="email" />
+        <input id="proCode" type="text" placeholder="PRO-XXXX-XXXX" autocomplete="off" />
+        <button class="secondary" id="activateBtn" type="button">Activate Pro</button>
+      </div>
+
+      <div id="activateStatus" class="inlineStatus" role="status" aria-live="polite"></div>
+    </div>
+
+    <div class="modalActions" style="margin-top:12px;">
       <button class="secondary" id="upgradeClose" type="button">Not now</button>
       <button class="primary" id="upgradeBtn" type="button">Upgrade (coming soon)</button>
     </div>
@@ -125,15 +208,59 @@
 <script>
 /* ===== CONFIG ===== */
 const API_URL = "https://sparkling-wildflower-5f7e.typingspeedhub.workers.dev/generate";
-const LIMIT = 5;
+
+/** Free plan: 5 replies per 24 hours */
+const FREE_LIMIT_24H = 5;
+
+/** Pro limit: for now very high (UI only). Later backend will control. */
+const PRO_LIMIT_24H = 999999;
+
+/** Placeholder Gumroad link */
+const GUMROAD_URL = "#"; // later: "https://<your>.gumroad.com/l/<product>"
 
 const LOCKED_CASES = ["awkward", "dating"];
 const LOCKED_GOALS = ["boundaries", "close", "short"];
 
-/* ===== DATE / QUOTA ===== */
-const today = new Date().toISOString().slice(0, 10);
-const key = "usage_" + today;
-let used = Number(localStorage.getItem(key) || 0);
+/* ===== 24H QUOTA (LOCAL STORAGE) =====
+   We store a rolling 24h reset time, not "today".
+*/
+const STORAGE_KEY = "rh_usage_v2";
+
+function nowMs(){ return Date.now(); }
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { used: 0, resetAt: nowMs(), pro: false };
+    const s = JSON.parse(raw);
+    return {
+      used: Number(s.used || 0),
+      resetAt: Number(s.resetAt || nowMs()),
+      pro: Boolean(s.pro || false)
+    };
+  } catch {
+    return { used: 0, resetAt: nowMs(), pro: false };
+  }
+}
+
+function saveState(s) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+}
+
+function ensureReset24h() {
+  const s = loadState();
+  if (nowMs() - s.resetAt >= DAY_MS) {
+    s.used = 0;
+    s.resetAt = nowMs();
+    saveState(s);
+  }
+  return s;
+}
+
+function getLimit(s) {
+  return s.pro ? PRO_LIMIT_24H : FREE_LIMIT_24H;
+}
 
 /* ===== DOM ===== */
 const msgEl = document.getElementById("msg");
@@ -146,6 +273,7 @@ const statusEl = document.getElementById("status");
 const quotaEl = document.getElementById("quota");
 const loadingEl = document.getElementById("loading");
 const goBtn = document.getElementById("go");
+const proBadge = document.getElementById("proBadge");
 
 /* Upgrade modal */
 const upgradeModal = document.getElementById("upgradeModal");
@@ -153,29 +281,22 @@ const upgradeText = document.getElementById("upgradeText");
 const upgradeClose = document.getElementById("upgradeClose");
 const upgradeBtn = document.getElementById("upgradeBtn");
 
+/* New: subscribe + activate */
+const subscribeLink = document.getElementById("subscribeLink");
+const proEmailEl = document.getElementById("proEmail");
+const proCodeEl = document.getElementById("proCode");
+const activateBtn = document.getElementById("activateBtn");
+const activateStatus = document.getElementById("activateStatus");
+
 /* ===== UI HELPERS ===== */
-function updateQuota() {
-  quotaEl.textContent = `Free today: ${Math.max(0, LIMIT - used)} / ${LIMIT}`;
-  // Optional: visually disable button when quota exceeded
-  if (used >= LIMIT) {
-    goBtn.textContent = "Upgrade to continue";
-  } else {
-    goBtn.textContent = "Generate";
-  }
-}
-
-function openUpgrade(msg) {
-  upgradeText.textContent = msg || "Upgrade to unlock more replies and premium modes.";
-  upgradeModal.style.display = "flex";
-}
-
-function closeUpgrade() {
-  upgradeModal.style.display = "none";
-}
-
 function setStatus(text, kind = "") {
   statusEl.textContent = text;
   statusEl.className = "status " + kind;
+}
+
+function setInlineStatus(text, kind = "") {
+  activateStatus.textContent = text || "";
+  activateStatus.className = "inlineStatus " + kind;
 }
 
 function escapeHtml(str) {
@@ -190,28 +311,118 @@ function setLoading(on) {
   goBtn.disabled = on;
 }
 
-/* Close modal actions */
+function openUpgrade(msg) {
+  upgradeText.textContent = msg || "Upgrade to unlock more replies and premium modes.";
+  setInlineStatus(""); // clear activate messages
+  upgradeModal.style.display = "flex";
+}
+
+function closeUpgrade() {
+  upgradeModal.style.display = "none";
+  setInlineStatus("");
+}
+
+function refreshProUI() {
+  const s = ensureReset24h();
+  proBadge.style.display = s.pro ? "inline-flex" : "none";
+}
+
+function updateQuota() {
+  const s = ensureReset24h();
+  const limit = getLimit(s);
+  const remaining = Math.max(0, limit - s.used);
+
+  if (s.pro) {
+    quotaEl.textContent = `Pro: ${remaining} left (24h)`;
+    quotaEl.classList.add("pro");
+    goBtn.textContent = "Generate";
+  } else {
+    quotaEl.textContent = `Free: ${remaining} / ${FREE_LIMIT_24H} (24h)`;
+    quotaEl.classList.remove("pro");
+    if (s.used >= FREE_LIMIT_24H) {
+      goBtn.textContent = "Upgrade to continue";
+    } else {
+      goBtn.textContent = "Generate";
+    }
+  }
+}
+
+/* ===== Modal close actions ===== */
 upgradeClose.addEventListener("click", closeUpgrade);
 upgradeModal.addEventListener("click", (e) => {
-  if (e.target === upgradeModal) closeUpgrade(); // click outside card closes
+  if (e.target === upgradeModal) closeUpgrade();
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closeUpgrade();
 });
+
+/* ===== Subscribe placeholder ===== */
+subscribeLink.href = GUMROAD_URL;
+subscribeLink.addEventListener("click", (e) => {
+  if (GUMROAD_URL === "#") {
+    e.preventDefault();
+    setInlineStatus("Gumroad subscription link coming soon.", "err");
+  }
+});
+
+/* Keep old upgrade button too (optional) */
 upgradeBtn.addEventListener("click", () => {
-  // Placeholder – you can link to checkout later
-  alert("Upgrade is coming soon.");
+  if (GUMROAD_URL === "#") {
+    setInlineStatus("Upgrade is coming soon. (No Gumroad link yet.)", "err");
+  } else {
+    window.open(GUMROAD_URL, "_blank", "noopener");
+  }
+});
+
+/* ===== Activate (STUB for now) ===== */
+function activateProStub(email, code) {
+  if (!email || !email.includes("@")) {
+    return { ok: false, msg: "Please enter a valid email." };
+  }
+  if (!code) {
+    return { ok: false, msg: "Please enter your activation code." };
+  }
+  if (code.trim().toUpperCase() !== "PRO-TEST-2026") {
+    return { ok: false, msg: "Invalid code (stub). Use PRO-TEST-2026 for now." };
+  }
+
+  const s = ensureReset24h();
+  s.pro = true;
+  saveState(s);
+  return { ok: true, msg: "Pro activated ✅ (stub). You can now use Pro mode." };
+}
+
+activateBtn.addEventListener("click", () => {
+  setInlineStatus("");
+  const email = (proEmailEl.value || "").trim();
+  const code = (proCodeEl.value || "").trim();
+  const res = activateProStub(email, code);
+
+  if (res.ok) {
+    setInlineStatus(res.msg, "ok");
+    setStatus("Pro activated ✅", "ok");
+    refreshProUI();
+    updateQuota();
+    // Optional: close modal after success
+    // closeUpgrade();
+  } else {
+    setInlineStatus(res.msg, "err");
+  }
 });
 
 /* ===== INIT ===== */
 updateQuota();
+refreshProUI();
 answersEl.style.display = "none";
 
 /* ===== MAIN ACTION ===== */
 goBtn.addEventListener("click", async () => {
-  // If already out of quota, show upgrade immediately
-  if (used >= LIMIT) {
-    openUpgrade("You’ve reached today’s free limit. Upgrade for unlimited replies.");
+  const s = ensureReset24h();
+  const limit = getLimit(s);
+
+  // If already out of quota, show upgrade immediately (free only)
+  if (!s.pro && s.used >= limit) {
+    openUpgrade("You’ve reached your free limit for the last 24 hours. Upgrade for more.");
     return;
   }
 
@@ -225,14 +436,16 @@ goBtn.addEventListener("click", async () => {
     return;
   }
 
-  if (LOCKED_CASES.includes(useCase)) {
-    openUpgrade("This use case is available on the paid plan.");
-    return;
-  }
-
-  if (LOCKED_GOALS.includes(goal)) {
-    openUpgrade("This reply goal requires an upgrade.");
-    return;
+  // Locked checks only apply if NOT Pro
+  if (!s.pro) {
+    if (LOCKED_CASES.includes(useCase)) {
+      openUpgrade("This use case is available on the paid plan.");
+      return;
+    }
+    if (LOCKED_GOALS.includes(goal)) {
+      openUpgrade("This reply goal requires an upgrade.");
+      return;
+    }
   }
 
   try {
@@ -247,7 +460,6 @@ goBtn.addEventListener("click", async () => {
       body: JSON.stringify({ message, tone, goal, useCase })
     });
 
-    // Better error handling if non-200
     let data = null;
     try {
       data = await res.json();
@@ -264,8 +476,9 @@ goBtn.addEventListener("click", async () => {
       throw new Error("Invalid response from server.");
     }
 
-    used++;
-    localStorage.setItem(key, String(used));
+    // consume one usage
+    s.used += 1;
+    saveState(s);
     updateQuota();
 
     answersEl.innerHTML = data.replies
@@ -281,8 +494,10 @@ goBtn.addEventListener("click", async () => {
     setStatus("Done ✅", "ok");
 
     // If the user just used the last free query, proactively show upgrade
-    if (used >= LIMIT) {
-      openUpgrade("That was your last free reply for today. Upgrade for unlimited replies.");
+    const s2 = ensureReset24h();
+    const lim2 = getLimit(s2);
+    if (!s2.pro && s2.used >= lim2) {
+      openUpgrade("That was your last free reply for the last 24 hours. Upgrade for more.");
     }
 
   } catch (err) {
@@ -295,4 +510,7 @@ goBtn.addEventListener("click", async () => {
 </script>
 </body>
 </html>
+
+  
+
 
