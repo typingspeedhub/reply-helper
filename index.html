@@ -102,93 +102,49 @@
 </div>
 
 <script>
-/* ================= CONFIG ================= */
-
+/* ===== CONFIG ===== */
 const API_URL = "https://sparkling-wildflower-5f7e.typingspeedhub.workers.dev/generate";
+const LIMIT = 5;
 
-const FREE_DAILY_LIMIT = 5;
-const UPGRADE_URL = "/upgrade.html";
+const LOCKED_CASES = ["awkward", "dating"];
+const LOCKED_GOALS = ["boundaries", "close", "short"];
 
-// locked rules
-const LOCKED_USE_CASES = new Set(["awkward", "dating"]);
-const FREE_GOALS = new Set(["calm_professional", "clarify"]);
+/* ===== DATE / QUOTA ===== */
+const today = new Date().toISOString().slice(0, 10);
+const key = "usage_" + today;
+let used = Number(localStorage.getItem(key) || 0);
 
-/* ================= DOM ================= */
+/* ===== DOM ===== */
+const msgEl = document.getElementById("msg");
+const useCaseEl = document.getElementById("useCase");
+const goalEl = document.getElementById("goal");
+const toneEl = document.getElementById("tone");
 
-const $ = (id) => document.getElementById(id);
+const answersEl = document.getElementById("answers");
+const statusEl = document.getElementById("status");
+const quotaEl = document.getElementById("quota");
+const loadingEl = document.getElementById("loading");
 
-const msgEl = $("msg");
-const toneEl = $("tone");
-const useCaseEl = $("useCase");
-const goalEl = $("goal");
+/* Upgrade modal */
+const upgradeModal = document.getElementById("upgradeModal");
+const upgradeText = document.getElementById("upgradeText");
+const upgradeClose = document.getElementById("upgradeClose");
 
-const goBtn = $("go");
-const clearBtn = $("clear");
-const loadingEl = $("loading");
-const statusEl = $("status");
-const answersEl = $("answers");
-const quotaEl = $("quota");
-
-const upgradeModal = $("upgradeModal");
-const upgradeText = $("upgradeText");
-const upgradeClose = $("upgradeClose");
-const upgradeLink = $("upgradeLink");
-
-/* ================= HELPERS ================= */
-
-function todayKey() {
-  return new Date().toISOString().slice(0, 10);
+/* ===== UI HELPERS ===== */
+function updateQuota() {
+  quotaEl.textContent = `Free today: ${Math.max(0, LIMIT - used)} / ${LIMIT}`;
 }
 
-function getUsage() {
-  const raw = localStorage.getItem("replyHelperUsage");
-  if (!raw) return { date: todayKey(), count: 0 };
-  try { return JSON.parse(raw); } catch { return { date: todayKey(), count: 0 }; }
-}
-
-function setUsage(u) {
-  localStorage.setItem("replyHelperUsage", JSON.stringify(u));
-}
-
-function remainingFree() {
-  let u = getUsage();
-  if (u.date !== todayKey()) {
-    u = { date: todayKey(), count: 0 };
-    setUsage(u);
-  }
-  return Math.max(0, FREE_DAILY_LIMIT - u.count);
-}
-
-function incrementUsage() {
-  let u = getUsage();
-  if (u.date !== todayKey()) u = { date: todayKey(), count: 0 };
-  u.count++;
-  setUsage(u);
-}
-
-function updateQuotaUI() {
-  const left = remainingFree();
-  quotaEl.textContent = `Free today: ${left} / ${FREE_DAILY_LIMIT}`;
-}
-
-function showUpgrade(reason) {
-  upgradeText.textContent = reason;
-  upgradeLink.href = UPGRADE_URL;
+function showUpgrade(msg) {
+  upgradeText.textContent = msg;
   upgradeModal.style.display = "flex";
 }
 
-upgradeClose.onclick = () => upgradeModal.style.display = "none";
-upgradeModal.onclick = (e) => {
-  if (e.target === upgradeModal) upgradeModal.style.display = "none";
+upgradeClose.onclick = () => {
+  upgradeModal.style.display = "none";
 };
 
-function setLoading(v) {
-  loadingEl.style.display = v ? "inline" : "none";
-  goBtn.disabled = v;
-  clearBtn.disabled = v;
-}
-
-function setStatus(text, kind="") {
+function setStatus(text, kind = "") {
   statusEl.textContent = text;
   statusEl.className = "status " + kind;
 }
@@ -200,88 +156,74 @@ function escapeHtml(str) {
     .replaceAll(">", "&gt;");
 }
 
-/* ================= PAYWALL CHECKS ================= */
+updateQuota();
 
-useCaseEl.addEventListener("change", () => {
-  if (LOCKED_USE_CASES.has(useCaseEl.value)) {
-    showUpgrade("This use case is available in Pro.");
-    useCaseEl.value = "customer_support";
-  }
-});
-
-goalEl.addEventListener("change", () => {
-  if (!FREE_GOALS.has(goalEl.value)) {
-    showUpgrade("This reply goal is available in Pro.");
-    goalEl.value = "calm_professional";
-  }
-});
-
-/* ================= ACTIONS ================= */
-
-clearBtn.onclick = () => {
-  msgEl.value = "";
-  answersEl.style.display = "none";
-  answersEl.innerHTML = "";
-  setStatus("");
-};
-
-goBtn.onclick = async () => {
+/* ===== MAIN ACTION ===== */
+document.getElementById("go").onclick = async () => {
   const message = msgEl.value.trim();
+  const useCase = useCaseEl.value;
+  const goal = goalEl.value;
+  const tone = toneEl.value;
+
   if (!message) {
     setStatus("Please paste a message first.", "err");
     return;
   }
 
-  if (remainingFree() <= 0) {
-    showUpgrade("You’ve reached today’s free limit (5 replies).");
+  if (LOCKED_CASES.includes(useCase)) {
+    showUpgrade("This use case is available on the paid plan.");
     return;
   }
 
-  setLoading(true);
-  setStatus("");
-  answersEl.style.display = "none";
-  answersEl.innerHTML = "";
+  if (LOCKED_GOALS.includes(goal)) {
+    showUpgrade("This reply goal requires an upgrade.");
+    return;
+  }
+
+  if (used >= LIMIT) {
+    showUpgrade("You’ve reached today’s free limit. Upgrade for unlimited replies.");
+    return;
+  }
 
   try {
+    loadingEl.style.display = "inline";
+    setStatus("");
+    answersEl.style.display = "none";
+    answersEl.innerHTML = "";
+
     const res = await fetch(API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message,
-        tone: toneEl.value,
-        useCase: useCaseEl.value,
-        goal: goalEl.value
-      })
+      body: JSON.stringify({ message, tone, goal, useCase })
     });
 
     const data = await res.json();
-    if (!res.ok || !Array.isArray(data.replies)) {
-      throw new Error(data?.error || "Generation failed");
+
+    if (!data.replies || !Array.isArray(data.replies)) {
+      throw new Error("Invalid response from server.");
     }
 
-    incrementUsage();
-    updateQuotaUI();
+    used++;
+    localStorage.setItem(key, used);
+    updateQuota();
 
-    answersEl.innerHTML = data.replies.slice(0,3).map((t,i)=>`
-      <div class="answer">
-        <h3>Reply #${i+1}</h3>
-        <pre>${escapeHtml(t)}</pre>
-        <button class="secondary" onclick="navigator.clipboard.writeText(${JSON.stringify(t)})">Copy</button>
-      </div>
-    `).join("");
+    answersEl.innerHTML = data.replies
+      .slice(0, 3)
+      .map((r, i) => `
+        <div class="answer">
+          <h3>Reply #${i + 1}</h3>
+          <pre>${escapeHtml(r)}</pre>
+        </div>
+      `).join("");
 
     answersEl.style.display = "grid";
     setStatus("Done ✅", "ok");
 
-  } catch (e) {
-    console.error(e);
-    setStatus(e.message || "Unexpected error.", "err");
+  } catch (err) {
+    console.error(err);
+    setStatus("Something went wrong. Please try again.", "err");
   } finally {
-    setLoading(false);
+    loadingEl.style.display = "none";
   }
 };
-
-/* ================= INIT ================= */
-
-updateQuotaUI();
 </script>
