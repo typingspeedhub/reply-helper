@@ -102,68 +102,186 @@
 </div>
 
 <script>
+/* ================= CONFIG ================= */
+
 const API_URL = "https://sparkling-wildflower-5f7e.typingspeedhub.workers.dev/generate";
-const LIMIT = 5;
-const LOCKED_CASES = ["awkward","dating"];
-const LOCKED_GOALS = ["boundaries","close","short"];
 
-const today = new Date().toISOString().slice(0,10);
-const key = "usage_"+today;
+const FREE_DAILY_LIMIT = 5;
+const UPGRADE_URL = "/upgrade.html";
 
-let used = Number(localStorage.getItem(key)||0);
-updateQuota();
+// locked rules
+const LOCKED_USE_CASES = new Set(["awkward", "dating"]);
+const FREE_GOALS = new Set(["calm_professional", "clarify"]);
 
-function updateQuota(){
-  document.getElementById("quota").textContent =
-    `Free today: ${Math.max(0, LIMIT-used)} / ${LIMIT}`;
+/* ================= DOM ================= */
+
+const $ = (id) => document.getElementById(id);
+
+const msgEl = $("msg");
+const toneEl = $("tone");
+const useCaseEl = $("useCase");
+const goalEl = $("goal");
+
+const goBtn = $("go");
+const clearBtn = $("clear");
+const loadingEl = $("loading");
+const statusEl = $("status");
+const answersEl = $("answers");
+const quotaEl = $("quota");
+
+const upgradeModal = $("upgradeModal");
+const upgradeText = $("upgradeText");
+const upgradeClose = $("upgradeClose");
+const upgradeLink = $("upgradeLink");
+
+/* ================= HELPERS ================= */
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
 }
 
-function showUpgrade(msg){
-  document.getElementById("upgradeText").textContent = msg;
-  document.getElementById("upgradeModal").style.display="flex";
+function getUsage() {
+  const raw = localStorage.getItem("replyHelperUsage");
+  if (!raw) return { date: todayKey(), count: 0 };
+  try { return JSON.parse(raw); } catch { return { date: todayKey(), count: 0 }; }
 }
 
-function closeUpgrade(){
-  document.getElementById("upgradeModal").style.display="none";
+function setUsage(u) {
+  localStorage.setItem("replyHelperUsage", JSON.stringify(u));
 }
 
-document.getElementById("go").onclick = async ()=>{
-  const msg = msgEl.value.trim();
-  const useCase = useCaseEl.value;
-  const goal = goalEl.value;
-
-  if(!msg) return;
-
-  if(LOCKED_CASES.includes(useCase)){
-    showUpgrade("This use case requires upgrade.");
-    return;
+function remainingFree() {
+  let u = getUsage();
+  if (u.date !== todayKey()) {
+    u = { date: todayKey(), count: 0 };
+    setUsage(u);
   }
+  return Math.max(0, FREE_DAILY_LIMIT - u.count);
+}
 
-  if(LOCKED_GOALS.includes(goal)){
-    showUpgrade("This reply goal requires upgrade.");
-    return;
-  }
+function incrementUsage() {
+  let u = getUsage();
+  if (u.date !== todayKey()) u = { date: todayKey(), count: 0 };
+  u.count++;
+  setUsage(u);
+}
 
-  if(used>=LIMIT && useCase!=="customer_support"){
-    showUpgrade("Daily free limit reached.");
-    return;
-  }
+function updateQuotaUI() {
+  const left = remainingFree();
+  quotaEl.textContent = `Free today: ${left} / ${FREE_DAILY_LIMIT}`;
+}
 
-  used++;
-  localStorage.setItem(key, used);
-  updateQuota();
+function showUpgrade(reason) {
+  upgradeText.textContent = reason;
+  upgradeLink.href = UPGRADE_URL;
+  upgradeModal.style.display = "flex";
+}
 
-  const res = await fetch(API_URL,{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({message:msg, goal})
-  });
-  const data = await res.json();
-
-  document.getElementById("answers").innerHTML =
-    data.replies.map(r=>`<div class="answer"><pre>${r}</pre></div>`).join("");
+upgradeClose.onclick = () => upgradeModal.style.display = "none";
+upgradeModal.onclick = (e) => {
+  if (e.target === upgradeModal) upgradeModal.style.display = "none";
 };
-</script>
-</body>
-</html>
 
+function setLoading(v) {
+  loadingEl.style.display = v ? "inline" : "none";
+  goBtn.disabled = v;
+  clearBtn.disabled = v;
+}
+
+function setStatus(text, kind="") {
+  statusEl.textContent = text;
+  statusEl.className = "status " + kind;
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+/* ================= PAYWALL CHECKS ================= */
+
+useCaseEl.addEventListener("change", () => {
+  if (LOCKED_USE_CASES.has(useCaseEl.value)) {
+    showUpgrade("This use case is available in Pro.");
+    useCaseEl.value = "customer_support";
+  }
+});
+
+goalEl.addEventListener("change", () => {
+  if (!FREE_GOALS.has(goalEl.value)) {
+    showUpgrade("This reply goal is available in Pro.");
+    goalEl.value = "calm_professional";
+  }
+});
+
+/* ================= ACTIONS ================= */
+
+clearBtn.onclick = () => {
+  msgEl.value = "";
+  answersEl.style.display = "none";
+  answersEl.innerHTML = "";
+  setStatus("");
+};
+
+goBtn.onclick = async () => {
+  const message = msgEl.value.trim();
+  if (!message) {
+    setStatus("Please paste a message first.", "err");
+    return;
+  }
+
+  if (remainingFree() <= 0) {
+    showUpgrade("You’ve reached today’s free limit (5 replies).");
+    return;
+  }
+
+  setLoading(true);
+  setStatus("");
+  answersEl.style.display = "none";
+  answersEl.innerHTML = "";
+
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message,
+        tone: toneEl.value,
+        useCase: useCaseEl.value,
+        goal: goalEl.value
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !Array.isArray(data.replies)) {
+      throw new Error(data?.error || "Generation failed");
+    }
+
+    incrementUsage();
+    updateQuotaUI();
+
+    answersEl.innerHTML = data.replies.slice(0,3).map((t,i)=>`
+      <div class="answer">
+        <h3>Reply #${i+1}</h3>
+        <pre>${escapeHtml(t)}</pre>
+        <button class="secondary" onclick="navigator.clipboard.writeText(${JSON.stringify(t)})">Copy</button>
+      </div>
+    `).join("");
+
+    answersEl.style.display = "grid";
+    setStatus("Done ✅", "ok");
+
+  } catch (e) {
+    console.error(e);
+    setStatus(e.message || "Unexpected error.", "err");
+  } finally {
+    setLoading(false);
+  }
+};
+
+/* ================= INIT ================= */
+
+updateQuotaUI();
+</script>
