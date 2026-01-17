@@ -15,7 +15,6 @@
     label { display:block; font-weight: 600; margin: 14px 0 8px; }
     textarea { width: 100%; min-height: 160px; resize: vertical; padding: 12px; border-radius: 10px; border: 1px solid #d8dde6; font-size: 14px; }
     select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #d8dde6; background: white; font-size: 14px; }
-    .row { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
     .actions { display:flex; gap: 10px; align-items:center; margin-top: 14px; flex-wrap: wrap; }
     button { padding: 10px 14px; border-radius: 10px; border: 0; cursor: pointer; font-weight: 700; }
     button.primary { background: #111827; color: white; }
@@ -46,6 +45,7 @@
       align-items:center;
       justify-content:center;
       z-index:9999;
+      padding: 16px;
     }
     .modalCard {
       background:#fff;
@@ -53,6 +53,16 @@
       width:100%;
       border-radius:14px;
       padding:16px;
+      box-shadow: 0 12px 34px rgba(0,0,0,.18);
+    }
+    .modalCard h2 { margin: 0 0 8px; }
+    .modalCard p { margin: 0 0 12px; }
+    .modalActions { display:flex; gap:10px; justify-content:flex-end; flex-wrap: wrap; }
+
+    #loading {
+      display:none;
+      font-size: 12px;
+      color: #444;
     }
   </style>
 </head>
@@ -64,7 +74,7 @@
     <p>Generate professional replies instantly. Free daily limit available.</p>
 
     <label>Incoming message</label>
-    <textarea id="msg"></textarea>
+    <textarea id="msg" placeholder="Paste the message you received..."></textarea>
 
     <label>Use case</label>
     <select id="useCase">
@@ -82,22 +92,33 @@
       <option value="short">🔒 Short reply</option>
     </select>
 
+    <label>Tone</label>
+    <select id="tone">
+      <option value="calm_professional">Calm & Professional</option>
+      <option value="friendly">Friendly</option>
+      <option value="direct">Direct</option>
+    </select>
+
     <div class="actions">
       <button class="primary" id="go">Generate</button>
+      <span id="loading">Generating…</span>
       <span id="quota" class="pill"></span>
     </div>
 
     <div id="status" class="status"></div>
     <div id="answers" class="answers"></div>
+    <div class="hint">Free plan: 5 replies/day. Locked options require upgrade.</div>
   </div>
 </div>
 
-<div id="upgradeModal" class="modalOverlay">
+<div id="upgradeModal" class="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="upgradeTitle">
   <div class="modalCard">
-    <h2>Upgrade</h2>
+    <h2 id="upgradeTitle">Upgrade</h2>
     <p id="upgradeText"></p>
-    <button class="secondary" onclick="closeUpgrade()">Not now</button>
-    <button class="primary">Upgrade (coming soon)</button>
+    <div class="modalActions">
+      <button class="secondary" id="upgradeClose" type="button">Not now</button>
+      <button class="primary" id="upgradeBtn" type="button">Upgrade (coming soon)</button>
+    </div>
   </div>
 </div>
 
@@ -124,25 +145,33 @@ const answersEl = document.getElementById("answers");
 const statusEl = document.getElementById("status");
 const quotaEl = document.getElementById("quota");
 const loadingEl = document.getElementById("loading");
+const goBtn = document.getElementById("go");
 
 /* Upgrade modal */
 const upgradeModal = document.getElementById("upgradeModal");
 const upgradeText = document.getElementById("upgradeText");
 const upgradeClose = document.getElementById("upgradeClose");
+const upgradeBtn = document.getElementById("upgradeBtn");
 
 /* ===== UI HELPERS ===== */
 function updateQuota() {
   quotaEl.textContent = `Free today: ${Math.max(0, LIMIT - used)} / ${LIMIT}`;
+  // Optional: visually disable button when quota exceeded
+  if (used >= LIMIT) {
+    goBtn.textContent = "Upgrade to continue";
+  } else {
+    goBtn.textContent = "Generate";
+  }
 }
 
-function showUpgrade(msg) {
-  upgradeText.textContent = msg;
+function openUpgrade(msg) {
+  upgradeText.textContent = msg || "Upgrade to unlock more replies and premium modes.";
   upgradeModal.style.display = "flex";
 }
 
-upgradeClose.onclick = () => {
+function closeUpgrade() {
   upgradeModal.style.display = "none";
-};
+}
 
 function setStatus(text, kind = "") {
   statusEl.textContent = text;
@@ -156,10 +185,36 @@ function escapeHtml(str) {
     .replaceAll(">", "&gt;");
 }
 
+function setLoading(on) {
+  loadingEl.style.display = on ? "inline" : "none";
+  goBtn.disabled = on;
+}
+
+/* Close modal actions */
+upgradeClose.addEventListener("click", closeUpgrade);
+upgradeModal.addEventListener("click", (e) => {
+  if (e.target === upgradeModal) closeUpgrade(); // click outside card closes
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeUpgrade();
+});
+upgradeBtn.addEventListener("click", () => {
+  // Placeholder – you can link to checkout later
+  alert("Upgrade is coming soon.");
+});
+
+/* ===== INIT ===== */
 updateQuota();
+answersEl.style.display = "none";
 
 /* ===== MAIN ACTION ===== */
-document.getElementById("go").onclick = async () => {
+goBtn.addEventListener("click", async () => {
+  // If already out of quota, show upgrade immediately
+  if (used >= LIMIT) {
+    openUpgrade("You’ve reached today’s free limit. Upgrade for unlimited replies.");
+    return;
+  }
+
   const message = msgEl.value.trim();
   const useCase = useCaseEl.value;
   const goal = goalEl.value;
@@ -171,22 +226,17 @@ document.getElementById("go").onclick = async () => {
   }
 
   if (LOCKED_CASES.includes(useCase)) {
-    showUpgrade("This use case is available on the paid plan.");
+    openUpgrade("This use case is available on the paid plan.");
     return;
   }
 
   if (LOCKED_GOALS.includes(goal)) {
-    showUpgrade("This reply goal requires an upgrade.");
-    return;
-  }
-
-  if (used >= LIMIT) {
-    showUpgrade("You’ve reached today’s free limit. Upgrade for unlimited replies.");
+    openUpgrade("This reply goal requires an upgrade.");
     return;
   }
 
   try {
-    loadingEl.style.display = "inline";
+    setLoading(true);
     setStatus("");
     answersEl.style.display = "none";
     answersEl.innerHTML = "";
@@ -197,14 +247,25 @@ document.getElementById("go").onclick = async () => {
       body: JSON.stringify({ message, tone, goal, useCase })
     });
 
-    const data = await res.json();
+    // Better error handling if non-200
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error("Server returned a non-JSON response.");
+    }
+
+    if (!res.ok) {
+      const serverMsg = (data && (data.error || data.message)) ? (data.error || data.message) : "Request failed.";
+      throw new Error(serverMsg);
+    }
 
     if (!data.replies || !Array.isArray(data.replies)) {
       throw new Error("Invalid response from server.");
     }
 
     used++;
-    localStorage.setItem(key, used);
+    localStorage.setItem(key, String(used));
     updateQuota();
 
     answersEl.innerHTML = data.replies
@@ -219,11 +280,19 @@ document.getElementById("go").onclick = async () => {
     answersEl.style.display = "grid";
     setStatus("Done ✅", "ok");
 
+    // If the user just used the last free query, proactively show upgrade
+    if (used >= LIMIT) {
+      openUpgrade("That was your last free reply for today. Upgrade for unlimited replies.");
+    }
+
   } catch (err) {
     console.error(err);
-    setStatus("Something went wrong. Please try again.", "err");
+    setStatus(err && err.message ? err.message : "Something went wrong. Please try again.", "err");
   } finally {
-    loadingEl.style.display = "none";
+    setLoading(false);
   }
-};
+});
 </script>
+</body>
+</html>
+
