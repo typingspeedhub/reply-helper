@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Upgrade to Reply Helper Pro</title>
-  <meta name="description" content="Upgrade to Reply Helper Pro and unlock unlimited replies, awkward messages, and dating use cases." />
+  <meta name="description" content="Upgrade to Reply Helper Pro and unlock premium reply modes and higher limits." />
 
   <style>
     :root { color-scheme: light; }
@@ -41,32 +41,45 @@
     li {
       margin-bottom: 6px;
     }
+
     .actions {
       display: flex;
       gap: 12px;
       flex-wrap: wrap;
       margin-top: 22px;
+      align-items: center;
     }
-    button {
+
+    /* Primary CTA as a link styled like a button */
+    a.primary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       padding: 12px 16px;
       border-radius: 10px;
       border: 0;
       cursor: pointer;
       font-weight: 700;
       font-size: 15px;
-    }
-    button.primary {
       background: #111827;
-      color: white;
+      color: #fff;
+      text-decoration: none;
     }
-    button.primary:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
+    a.primary:hover { opacity: 0.95; }
+
+    /* Secondary button */
+    a.secondary-link { text-decoration: none; }
     button.secondary {
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: 0;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 15px;
       background: #eef2ff;
       color: #1f2a5a;
     }
+
     .price {
       margin-top: 12px;
       font-size: 16px;
@@ -96,7 +109,7 @@
       </p>
 
       <ul>
-        <li>✅ Unlimited daily reply generations</li>
+        <li>✅ Higher daily reply limits</li>
         <li>✅ Awkward & difficult message replies</li>
         <li>✅ Dating & personal message replies</li>
         <li>✅ Extra reply goals (set boundaries, close conversations)</li>
@@ -104,29 +117,30 @@
       </ul>
 
       <div class="price">
-        <strong>Early access price: $5 / month</strong>
-        <small>Payments opening soon · cancel anytime</small>
+        <strong>Pro Access: $9 (one-time)</strong>
+        <small>Instant access · no setup required</small>
       </div>
 
       <div class="actions">
-        <button class="primary" disabled>
-          Upgrade (coming soon)
-        </button>
+        <a
+          class="primary"
+          href="https://timotajube.gumroad.com/l/xdckm"
+          target="_blank"
+          rel="noopener"
+        >
+          🔓 Unlock Pro for $9
+        </a>
 
-        <a href="/" style="text-decoration:none;">
-          <button class="secondary">
-            ← Back to app
-          </button>
+        <a class="secondary-link" href="/">
+          <button class="secondary">← Back to app</button>
         </a>
       </div>
 
       <div class="footer">
-        Want early access or have questions?<br>
-        Email us at <strong>typingspeedhub@gmail.com</strong>
+        Need help?<br>
+        Email us at <strong>replyhelper.team@gmail.com</strong>
       </div>
     </div>
   </div>
 </body>
 </html>
-
-
