@@ -83,25 +83,6 @@
       color:#555;
       font-size:13px;
     }
-    .modalSection input {
-      width:100%;
-      padding:10px 12px;
-      border-radius:10px;
-      border:1px solid #d8dde6;
-      font-size:14px;
-    }
-    .modalSection .row {
-      display:grid;
-      grid-template-columns: 1fr;
-      gap:10px;
-      margin-top:10px;
-    }
-    .inlineStatus {
-      margin-top:10px;
-      font-size:13px;
-    }
-    .inlineStatus.err { color:#b42318; }
-    .inlineStatus.ok { color:#067647; }
 
     #loading {
       display:none;
@@ -133,7 +114,11 @@
     <p>Generate professional replies instantly. Free daily limit available.</p>
 
     <label>Incoming message</label>
-    <textarea id="msg" placeholder="Paste the message you received..."></textarea>
+    <textarea id="msg" placeholder="Paste a message to get started.
+
+Drop the message you want to reply to - email, chat, DM, anything.
+
+Example: &quot;Hey, just following up on this...&quot;"></textarea>
 
     <label>Use case</label>
     <select id="useCase">
@@ -176,31 +161,23 @@
     <h2 id="upgradeTitle">Upgrade</h2>
     <p id="upgradeText"></p>
 
-    <!-- Subscribe section -->
+    <!-- Subscribe / Buy section -->
     <div class="modalSection">
-      <h3>Subscribe (coming soon)</h3>
-      <p class="muted">Pro will unlock higher limits and premium modes.</p>
-      <a id="subscribeLink" class="linkBtn" href="#" target="_blank" rel="noopener">Subscribe on Gumroad (Coming soon)</a>
-      <p class="muted" style="margin-top:10px;">Once your Gumroad product is live, we’ll replace this link.</p>
+      <h3>Get Pro</h3>
+      <p class="muted">Unlock premium modes and higher limits.</p>
+      <a id="subscribeLink" class="linkBtn" href="#" target="_blank" rel="noopener">Buy Pro on Gumroad</a>
+      <p class="muted" style="margin-top:10px;">After purchase, return here and Pro will be available instantly.</p>
     </div>
 
-    <!-- Activate section -->
+    <!-- Already purchased section -->
     <div class="modalSection">
-      <h3>Already subscribed? Activate</h3>
-      <p class="muted">Enter your email + activation code. (For now use: <b>PRO-TEST-2026</b>)</p>
-
-      <div class="row">
-        <input id="proEmail" type="email" placeholder="you@example.com" autocomplete="email" />
-        <input id="proCode" type="text" placeholder="PRO-XXXX-XXXX" autocomplete="off" />
-        <button class="secondary" id="activateBtn" type="button">Activate Pro</button>
-      </div>
-
-      <div id="activateStatus" class="inlineStatus" role="status" aria-live="polite"></div>
+      <h3>Already purchased?</h3>
+      <p class="muted">Open Reply Helper from your Gumroad “View content” page. Pro activates automatically.</p>
     </div>
 
     <div class="modalActions" style="margin-top:12px;">
       <button class="secondary" id="upgradeClose" type="button">Not now</button>
-      <button class="primary" id="upgradeBtn" type="button">Upgrade (coming soon)</button>
+      <button class="primary" id="upgradeBtn" type="button">Buy Pro</button>
     </div>
   </div>
 </div>
@@ -215,8 +192,8 @@ const FREE_LIMIT_24H = 5;
 /** Pro limit: for now very high (UI only). Later backend will control. */
 const PRO_LIMIT_24H = 999999;
 
-/** Placeholder Gumroad link */
-const GUMROAD_URL = "#"; // later: "https://<your>.gumroad.com/l/<product>"
+/** Gumroad link */
+const GUMROAD_URL = "https://timotajube.gumroad.com/l/xdckm";
 
 const LOCKED_CASES = ["awkward", "dating"];
 const LOCKED_GOALS = ["boundaries", "close", "short"];
@@ -281,22 +258,13 @@ const upgradeText = document.getElementById("upgradeText");
 const upgradeClose = document.getElementById("upgradeClose");
 const upgradeBtn = document.getElementById("upgradeBtn");
 
-/* New: subscribe + activate */
+/* Buy link */
 const subscribeLink = document.getElementById("subscribeLink");
-const proEmailEl = document.getElementById("proEmail");
-const proCodeEl = document.getElementById("proCode");
-const activateBtn = document.getElementById("activateBtn");
-const activateStatus = document.getElementById("activateStatus");
 
 /* ===== UI HELPERS ===== */
 function setStatus(text, kind = "") {
   statusEl.textContent = text;
   statusEl.className = "status " + kind;
-}
-
-function setInlineStatus(text, kind = "") {
-  activateStatus.textContent = text || "";
-  activateStatus.className = "inlineStatus " + kind;
 }
 
 function escapeHtml(str) {
@@ -313,13 +281,11 @@ function setLoading(on) {
 
 function openUpgrade(msg) {
   upgradeText.textContent = msg || "Upgrade to unlock more replies and premium modes.";
-  setInlineStatus(""); // clear activate messages
   upgradeModal.style.display = "flex";
 }
 
 function closeUpgrade() {
   upgradeModal.style.display = "none";
-  setInlineStatus("");
 }
 
 function refreshProUI() {
@@ -356,57 +322,21 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closeUpgrade();
 });
 
-/* ===== Subscribe placeholder ===== */
+/* ===== Buy links ===== */
 subscribeLink.href = GUMROAD_URL;
+
 subscribeLink.addEventListener("click", (e) => {
   if (GUMROAD_URL === "#") {
     e.preventDefault();
-    setInlineStatus("Gumroad subscription link coming soon.", "err");
+    openUpgrade("Pro link not set yet. Add your Gumroad URL in the code.");
   }
 });
 
-/* Keep old upgrade button too (optional) */
 upgradeBtn.addEventListener("click", () => {
   if (GUMROAD_URL === "#") {
-    setInlineStatus("Upgrade is coming soon. (No Gumroad link yet.)", "err");
+    openUpgrade("Pro link not set yet. Add your Gumroad URL in the code.");
   } else {
     window.open(GUMROAD_URL, "_blank", "noopener");
-  }
-});
-
-/* ===== Activate (STUB for now) ===== */
-function activateProStub(email, code) {
-  if (!email || !email.includes("@")) {
-    return { ok: false, msg: "Please enter a valid email." };
-  }
-  if (!code) {
-    return { ok: false, msg: "Please enter your activation code." };
-  }
-  if (code.trim().toUpperCase() !== "PRO-TEST-2026") {
-    return { ok: false, msg: "Invalid code (stub). Use PRO-TEST-2026 for now." };
-  }
-
-  const s = ensureReset24h();
-  s.pro = true;
-  saveState(s);
-  return { ok: true, msg: "Pro activated ✅ (stub). You can now use Pro mode." };
-}
-
-activateBtn.addEventListener("click", () => {
-  setInlineStatus("");
-  const email = (proEmailEl.value || "").trim();
-  const code = (proCodeEl.value || "").trim();
-  const res = activateProStub(email, code);
-
-  if (res.ok) {
-    setInlineStatus(res.msg, "ok");
-    setStatus("Pro activated ✅", "ok");
-    refreshProUI();
-    updateQuota();
-    // Optional: close modal after success
-    // closeUpgrade();
-  } else {
-    setInlineStatus(res.msg, "err");
   }
 });
 
@@ -415,14 +345,14 @@ updateQuota();
 refreshProUI();
 answersEl.style.display = "none";
 
-/* ===== MAIN ACTION ===== */
+/* ===== MAIN ACTION (FIXED) ===== */
 goBtn.addEventListener("click", async () => {
   const s = ensureReset24h();
   const limit = getLimit(s);
 
   // If already out of quota, show upgrade immediately (free only)
   if (!s.pro && s.used >= limit) {
-    openUpgrade("You’ve reached your free limit for the last 24 hours. Upgrade for more.");
+    openUpgrade("You’ve used your 5 free replies for the next 24 hours. Upgrade to keep generating instantly.");
     return;
   }
 
@@ -432,18 +362,19 @@ goBtn.addEventListener("click", async () => {
   const tone = toneEl.value;
 
   if (!message) {
-    setStatus("Please paste a message first.", "err");
+    setStatus("Paste a message above, then click Generate.", "err");
+    msgEl.focus();
     return;
   }
 
   // Locked checks only apply if NOT Pro
   if (!s.pro) {
     if (LOCKED_CASES.includes(useCase)) {
-      openUpgrade("This use case is available on the paid plan.");
+      openUpgrade("This mode is Pro-only. Upgrade to unlock Awkward / Difficult and Dating.");
       return;
     }
     if (LOCKED_GOALS.includes(goal)) {
-      openUpgrade("This reply goal requires an upgrade.");
+      openUpgrade("This reply goal is Pro-only. Upgrade to unlock Boundaries, Close conversation, and Short reply.");
       return;
     }
   }
@@ -497,7 +428,7 @@ goBtn.addEventListener("click", async () => {
     const s2 = ensureReset24h();
     const lim2 = getLimit(s2);
     if (!s2.pro && s2.used >= lim2) {
-      openUpgrade("That was your last free reply for the last 24 hours. Upgrade for more.");
+      openUpgrade("That was your last free reply for the next 24 hours. Upgrade to keep generating without interruptions.");
     }
 
   } catch (err) {
@@ -510,6 +441,7 @@ goBtn.addEventListener("click", async () => {
 </script>
 </body>
 </html>
+
 
   
 
