@@ -166,7 +166,7 @@ Example: &quot;Hey, just following up on this...&quot;"></textarea>
       <h3>Get Pro</h3>
       <p class="muted">Unlock premium modes and higher limits.</p>
       <a id="subscribeLink" class="linkBtn" href="#" target="_blank" rel="noopener">Buy Pro on Gumroad</a>
-      <p class="muted" style="margin-top:10px;">After purchase, return here and Pro will be available instantly.</p>
+      <p class="muted" style="margin-top:10px;">After purchase, open Reply Helper from your Gumroad “View content” page.</p>
     </div>
 
     <!-- Already purchased section -->
@@ -237,6 +237,32 @@ function ensureReset24h() {
 
 function getLimit(s) {
   return s.pro ? PRO_LIMIT_24H : FREE_LIMIT_24H;
+}
+
+/* ===== PRO FROM URL (MVP) ===== */
+function getParam(name) {
+  const url = new URL(window.location.href);
+  return url.searchParams.get(name);
+}
+
+function enableProFromUrl() {
+  const license = getParam("license_key") || getParam("license") || getParam("pro");
+  if (!license) return false;
+
+  const s = ensureReset24h();
+  s.pro = true;
+  saveState(s);
+
+  // Clean URL (optional)
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("license_key");
+    url.searchParams.delete("license");
+    url.searchParams.delete("pro");
+    window.history.replaceState({}, "", url.toString());
+  } catch {}
+
+  return true;
 }
 
 /* ===== DOM ===== */
@@ -341,11 +367,12 @@ upgradeBtn.addEventListener("click", () => {
 });
 
 /* ===== INIT ===== */
+enableProFromUrl();
 updateQuota();
 refreshProUI();
 answersEl.style.display = "none";
 
-/* ===== MAIN ACTION (FIXED) ===== */
+/* ===== MAIN ACTION ===== */
 goBtn.addEventListener("click", async () => {
   const s = ensureReset24h();
   const limit = getLimit(s);
@@ -441,8 +468,3 @@ goBtn.addEventListener("click", async () => {
 </script>
 </body>
 </html>
-
-
-  
-
-
